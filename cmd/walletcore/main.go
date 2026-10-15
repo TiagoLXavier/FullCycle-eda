@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 
 	"github.com.br/devfullcycle/fc-ms-wallet/internal/database"
 	"github.com.br/devfullcycle/fc-ms-wallet/internal/event"
@@ -21,15 +22,15 @@ import (
 )
 
 func main() {
-	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", "root", "root", "mysql", "3306", "wallet"))
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8&parseTime=True&loc=Local", getEnv("DB_USER", "root"), getEnv("DB_PASSWORD", "root"), getEnv("DB_HOST", "mysql"), getEnv("DB_PORT", "3306"), getEnv("DB_NAME", "wallet")))
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
 
 	configMap := ckafka.ConfigMap{
-		"bootstrap.servers": "kafka:29092",
-		"group.id":          "wallet",
+		"bootstrap.servers":   getEnv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092"),
+		"go.delivery.reports": false,
 	}
 	kafkaProducer := kafka.NewKafkaProducer(&configMap)
 
@@ -68,4 +69,11 @@ func main() {
 
 	fmt.Println("Server is running")
 	webserver.Start()
+}
+
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

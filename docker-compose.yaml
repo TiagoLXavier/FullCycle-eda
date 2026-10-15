@@ -1,28 +1,6 @@
-version: '3'
-
 services:
-  goapp: 
-    build: .
-    platform: linux/amd64
-    volumes:
-      - .:/app
-    ports:
-      - 8080:8080
-
-  mysql:
-    image: mysql:5.7
-    platform: linux/amd64
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: wallet
-      MYSQL_PASSWORD: root
-    ports:
-      - 3306:3306
-    volumes:
-      - .docker/mysql:/var/lib/mysql
-
   zookeeper:
-    image: "confluentinc/cp-zookeeper:6.1.0"
+    image: confluentinc/cp-zookeeper:6.1.0
     container_name: zookeeper
     ports:
       - 2181:2181
@@ -32,14 +10,11 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: "confluentinc/cp-enterprise-kafka:6.1.0"
+    image: confluentinc/cp-enterprise-kafka:6.1.0
     container_name: kafka
     depends_on:
       - zookeeper
     ports:
-    # Exposes 9092 for external connections to the broker
-    # Use kafka:29092 for connections internal on the docker network
-    # See https://rmoff.net/2018/08/02/kafka-listeners-explained/ for details
       - '9092:9092'
     environment:
       TZ: Sao_Paulo/Brazil
@@ -54,20 +29,104 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 100
       CONFLUENT_METRICS_ENABLE: 'false'
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:29092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
 
-  control-center:
-    image: confluentinc/cp-enterprise-control-center:7.3.0
-    hostname: control-center
-    container_name: control-center
+  kafka-init:
+    image: confluentinc/cp-enterprise-kafka:6.1.0
     depends_on:
-      - kafka
-    ports:
-      - "9021:9021"
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic transactions --partitions 1 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic balances --partitions 1 --replication-factor 1
+
+  mysql-wallet:
+    image: mysql:5.7
+    platform: linux/amd64
+    container_name: mysql-wallet
     environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:29092'
-      CONTROL_CENTER_REPLICATION_FACTOR: 1
-      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
-      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
-      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
-      PORT: 9021
-  
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: wallet
+    ports:
+      - 3306:3306
+    volumes:
+      - ./.docker/wallet-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  mysql-balances:
+    image: mysql:5.7
+    platform: linux/amd64
+    container_name: mysql-balances
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: balances
+    ports:
+      - 3307:3306
+    volumes:
+      - ./.docker/balances-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  wallet-core:
+    build:
+      context: .
+      target: walletcore
+    platform: linux/amd64
+    container_name: wallet-core
+    depends_on:
+      mysql-wallet:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: mysql-wallet
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: wallet
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    ports:
+      - 8080:8080
+    restart: on-failure
+
+  balances:
+    build:
+      context: .
+      target: balances
+    platform: linux/amd64
+    container_name: balances
+    depends_on:
+      mysql-balances:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: mysql-balances
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: balances
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    ports:
+      - 3003:3003
+    restart: on-failure

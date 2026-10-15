@@ -34,5 +34,7 @@ func (p *Producer) Publish(msg interface{}, key []byte, topic string) error {
 	if err != nil {
 		panic(err)
 	}
+	producer.Flush(5000)
+	producer.Close()
 	return nil
 }
