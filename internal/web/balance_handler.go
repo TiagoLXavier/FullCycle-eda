@@ -1,4 +1,4 @@
-package balances
+package web
 
 import (
 	"database/sql"
@@ -6,20 +6,23 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com.br/devfullcycle/fc-ms-wallet/internal/usecase/get_balance"
 	"github.com/go-chi/chi/v5"
 )
 
-type Handler struct {
-	Repository *Repository
+type WebBalanceHandler struct {
+	GetBalanceUseCase get_balance.GetBalanceUseCase
 }
 
-func NewHandler(repository *Repository) *Handler {
-	return &Handler{Repository: repository}
+func NewWebBalanceHandler(getBalanceUseCase get_balance.GetBalanceUseCase) *WebBalanceHandler {
+	return &WebBalanceHandler{
+		GetBalanceUseCase: getBalanceUseCase,
+	}
 }
 
-func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
+func (h *WebBalanceHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 	accountID := chi.URLParam(r, "account_id")
-	balance, err := h.Repository.FindByAccountID(accountID)
+	output, err := h.GetBalanceUseCase.Execute(get_balance.GetBalanceInputDTO{AccountID: accountID})
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "account not found"})
 		return
@@ -28,7 +31,7 @@ func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, balance)
+	writeJSON(w, http.StatusOK, output)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body interface{}) {

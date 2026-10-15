@@ -129,13 +129,33 @@ docker compose logs -f wallet-core balances
 
 A cada transação aparecem `UpdateBalanceKafkaHandler called` no `wallet-core` e `balances updated: <conta>=<saldo> ...` no `balances`.
 
+## Estrutura do Balances
+
+O Balances segue as mesmas camadas do Wallet Core, no mesmo módulo Go:
+
+| Camada        | Arquivo                                                |
+|---------------|--------------------------------------------------------|
+| Entidade      | `internal/entity/balance.go`                           |
+| Gateway       | `internal/gateway/balance.go`                          |
+| Banco         | `internal/database/balance_db.go`                      |
+| Casos de uso  | `internal/usecase/update_balance`, `internal/usecase/get_balance` |
+| Consumidor    | `internal/event/handler/balance_updated_consumer.go`   |
+| API           | `internal/web/balance_handler.go`                      |
+| Entrada       | `cmd/balances/main.go`                                 |
+
+Testes unitários:
+
+```bash
+docker run --rm -v "$(pwd)":/app -w /app golang:1.20 go test ./...
+```
+
 ## Checklist do desafio
 
 | Requisito                                                  | Onde está                                                         |
 |------------------------------------------------------------|-------------------------------------------------------------------|
-| Microsserviço consumidor do Kafka                          | `cmd/balances`, `internal/balances` (tópico `balances`)           |
-| Banco de dados próprio do Balances                         | serviço `mysql-balances`, banco `balances`                        |
-| `GET /balances/{account_id}` na porta 3003                 | `internal/balances/handler.go`, porta `3003`                      |
+| Microsserviço consumidor do Kafka                          | `cmd/balances`, `internal/event/handler/balance_updated_consumer.go` (tópico `balances`) |
+| Banco de dados próprio do Balances                         | serviço `mysql-balances`, banco `balances`, `internal/database/balance_db.go` |
+| `GET /balances/{account_id}` na porta 3003                 | `internal/web/balance_handler.go`, porta `3003`                   |
 | Kafka, Wallet Core, Balances e bancos no mesmo compose     | `docker-compose.yaml`                                             |
 | Migrations automáticas                                     | `.docker/wallet-init/01-schema.sql`, `.docker/balances-init/01-schema.sql` |
 | Seeds automáticos nos dois bancos                          | `.docker/wallet-init/02-seed.sql`, `.docker/balances-init/02-seed.sql`     |
