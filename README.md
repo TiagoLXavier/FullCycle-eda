@@ -13,8 +13,8 @@ Nada mais precisa ser instalado: Go, MySQL e Kafka rodam dentro dos containers.
 ## Como rodar
 
 ```bash
-git clone <url-deste-repositorio>
-cd <pasta-do-repositorio>
+git clone https://github.com/TiagoLXavier/FullCycle-eda.git
+cd FullCycle-eda
 docker compose up -d
 ```
 
